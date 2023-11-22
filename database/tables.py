@@ -25,3 +25,10 @@ query_spaces = f"""
         )
         """
     
+query_users_id = f"""
+        CREATE TABLE IF NOT EXISTS users_id (
+        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        TG_ID INT,
+        USER_ID INT
+        )
+        """

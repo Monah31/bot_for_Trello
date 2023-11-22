@@ -5,9 +5,10 @@ from database.sqlite_db import Database
 db = Database(db_name="data.db")
 kaiten = Kaiten()
 users_list = []
-
+storage = {}
 
 async def process_my_spaces_command(message: types.Message):
+
     if db.check_user(message.from_user.id, "users"):
         if db.check_domain(message.from_user.id, "users") and db.check_api(
                 message.from_user.id, "users"):
@@ -36,8 +37,14 @@ async def process_my_spaces_command(message: types.Message):
                 await message.reply(
                     f"Выполни команду /kaiten_api и /domain, для добавления ключа и домена"
                 )
+    else:
+        await message.reply(
+            f"Выполни команду /start"
+        )
+
 
 async def process_my_boards_command(message: types.Message):
+    
     if db.check_user(message.from_user.id, "users"):
         if db.check_domain(message.from_user.id, "users") and db.check_api(
                 message.from_user.id, "users"):
@@ -69,6 +76,10 @@ async def process_my_boards_command(message: types.Message):
                     await message.reply(
                         f"Выполни команду /kaiten_api и /domain, для добавления ключа и домена"
                     )
+    else:
+        await message.reply(
+            f"Выполни команду /start"
+        )
 
 #Отправляем обратное сообщение с ответом на запрос
 
@@ -87,17 +98,12 @@ async def help_command(message: types.Message):
     """
     await message.answer(help_command.__doc__)
 
-
-async def process_change_user_command(message: types.Message):  
-    if message.from_user.username == 'viktormonah':
-        await message.reply(
-            f'Введите ID пользователя которого хотите добавить\удалить\nЕсли вы не знаете ID интересующей вас доски воспользуйтесь командой /all_boards'
-        )
-        
+      
 
 def register_handler_descs(dp: Dispatcher):
     dp.register_message_handler(process_my_spaces_command, commands=["all_spaces"])
     dp.register_message_handler(process_my_boards_command, commands=["all_boards"])
     dp.register_message_handler(help_command, commands=["help"])
-    dp.register_message_handler(process_change_user_command, commands=["change_user"])
+
+
     

@@ -8,9 +8,10 @@ from handlers import start, my_desks
 async def on_startup(dp):
     print("Start bot")
 
-
 my_desks.register_handler_descs(dp)
 start.register_handler_start(dp)
+
+
 
 
 

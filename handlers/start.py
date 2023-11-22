@@ -1,27 +1,40 @@
 import datetime
+import os
+
 from aiogram import types, Dispatcher
 from create_new_bot import dp
 from database.sqlite_db import Database
+from dotenv import load_dotenv, find_dotenv
 from utils.kaiten import Kaiten
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+load_dotenv(find_dotenv())
+admin_id = os.getenv('ADMIN_ID')
 
 db = Database(db_name='data.db')
 kaiten = Kaiten()
 storage = {}
 
 
+
 async def process_start_command(message: types.Message):
-    if not (db.check_user(message.from_user.id, 'users')):
-        record = (message.from_user.id, 'token', 'token', 'active',
-                  message.from_user.username)
-        db.add_record('users', record)
-        await message.reply(
-            "Пользователь создан в базе. Теперь необходимо добавить domain и ключ вашего Kaiten. С помощью комманд /kaiten_api и /domain"
-        )
+    desks = [desk[0] for desk in db.get_users_id(message.from_user.id)]
+
+    if message.from_user.id in desks or message.from_user.id == int(admin_id):
+        if not (db.check_user(message.from_user.id, 'users')):
+            record = (message.from_user.id, 'token', 'token', 'active',
+                    message.from_user.username)
+            db.add_record('users', record)
+            await message.reply(
+                "Пользователь создан в базе. Теперь необходимо добавить domain и ключ вашего Kaiten. С помощью комманд /kaiten_api и /domain"
+            )
+        else:
+            await message.reply(
+                "Вы уже есть в базе. Можете воспользоваться командами - /menu")
     else:
         await message.reply(
-            "Вы уже есть в базе. Можете воспользоваться командами - /menu")
+                "У вас нет доступа к командам, обратитесь к админестратору бота")
 
 
 async def get_api_key(message: types.Message):
@@ -68,6 +81,18 @@ async def menu_command(message: types.Message):
     else:
         await message.reply("Выполни команду /start")
 
+async def process_change_user_command(message: types.Message):  
+    
+    if message.from_user.id == int(admin_id):
+        await message.reply(
+            f'Введите ID пользователя которого хотите добавить\удалить\n'
+        )
+        storage[message.from_user.id] = 'waiting_user'
+    else:
+        await message.reply(
+            f'Только админ может добавлять пользователей бота!\n'
+        )
+
 
 async def boards_command(message: types.Message):
     desks = [desk[0] for desk in db.get_table_ids(message.from_user.id)]
@@ -88,7 +113,7 @@ async def spaces_command(message: types.Message):
         )
     else:
         await message.reply(
-            f'Вы не добавили ни одной доски. Что бы добавить - отправьте команду /change_spaces'
+            f'Вы не добавили ни одного пространства. Что бы добавить - отправьте команду /change_spaces'
         )
 
 
@@ -107,6 +132,16 @@ async def change_spaces_command(message: types.Message):
 
 async def kaiten_api_handler(message: types.Message):
     state = storage.get(message.from_user.id)
+    if state == 'waiting_user':
+        desks = [desk[0] for desk in db.get_users_id(message.from_user.id)]
+        if message.text in desks:
+            db.remove_users_id(message.from_user.id, message.text)
+            await message.reply(f"Удалили пользователя: {message.text}")
+        else:
+            db.add_users_id(message.from_user.id, message.text)
+            await message.reply(f"Добавили пользователя: {message.text}")
+            storage[message.from_user.id] = 'finished'
+
     if state == 'waiting_desk':
         desks = [desk[0] for desk in db.get_table_ids(message.from_user.id)]
         if message.text in desks:
@@ -126,12 +161,14 @@ async def kaiten_api_handler(message: types.Message):
             db.add_space(message.from_user.id, message.text)
             await message.reply(f"Добавили пространство: {message.text}")
         storage[message.from_user.id] = 'finished'
+
     if state == 'waiting_apikey':
         db.add_api_kaiten(message.text, message.from_user.id)
         await message.reply(
             f"Добавили ваш ключ в базу. {message.text[0:5]}XXXXXXXXXXXXXX")
         await message.delete()
         storage[message.from_user.id] = 'finished'
+        
     if state == 'waiting_token':
         db.add_domain_kaiten(message.text, message.from_user.id)
         await message.reply(
@@ -179,55 +216,42 @@ async def button_click(callback: types.CallbackQuery):
                             
                             if int(task.get('column_id')) == int(column_id):
                                 due = task.get('due_date')
-                                if not task.get('tags'):   
-                                    name = task.get('title')
-                                    text = f"{name}"
-                                    if due:
-                                        due_date = datetime.datetime.strptime(due, '%Y-%m-%dT%H:%M:%S.%fZ') + datetime.timedelta(hours=3)
+                                name = task.get('title')
+                                text = f"{name}"
 
-                                        now = datetime.datetime.now()
-                                        time_left = due_date - now
-                                        days = time_left.days
-                                        hours = (time_left.seconds / 3600)
-                                        minutes = ((time_left.seconds % 3600) // 60)
-                                        time_left = f'Дедлайн: {days} дней, {round(hours, 0)} часов, {minutes} минут.'
+                                if due:
+                                    due_date = datetime.datetime.strptime(due, '%Y-%m-%dT%H:%M:%S.%fZ') + datetime.timedelta(hours=3)
+                                    now = datetime.datetime.now()
+                                    time_left = due_date - now
+                                    days = time_left.days
+                                    hours = (time_left.seconds / 3600)
+                                    minutes = ((time_left.seconds % 3600) // 60)
+                                    time_left = f'Дедлайн: {days} дней, {round(hours, 0)} часов, {minutes} минут.'
 
-                                        if days == 0 and (hours >= 0 or minutes >= 0):
-
+                                    if days == 0 and (hours >= 0 or minutes >= 0):
+                                        time_left = 'Просрочен'
+                                        count_tasks += 1
+                                        if not task.get('tags'): 
                                             label_name = 'без направления'
                                             dict_lable['без направления'] += 1                                           
                                             task_list += (f'\n{text}\nНаправление: {label_name}\n{time_left}\n')
-                                            count_tasks += 1
-                                            time_left = 'Просрочен'
-                                    else:
-                                        time_left = 'Без дедлайна'
-                                else:                              
-                                    for label in task.get('tags'):
-                                        
-                                        name = task.get('title')                                        
-                                        label_name = label.get('name')
-                                        
-                                        text = f"{name}"
-                                        if due:
-                                            due_date = datetime.datetime.strptime(due, '%Y-%m-%dT%H:%M:%S.%fZ') + datetime.timedelta(hours=3)
+                                        else:    
+                                            text_label_name = ''                          
+                                            for label in task.get('tags'):
+                                                
+                                                                                      
+                                                label_name = label.get('name')   
+                                                text_label_name += f'{label_name}; ' 
 
-                                            now = datetime.datetime.now()
-                                            time_left = due_date - now
-                                            days = time_left.days
-                                            hours = (time_left.seconds / 3600)
-                                            minutes = ((time_left.seconds % 3600) // 60)
-                                            time_left = f'Дедлайн: {days} дней, {round(hours, 0)} часов, {minutes} минут.'
-                                            if days == 0 and (hours >= 0 or minutes >= 0):
-                                                label_name = label.get('name')
                                                 if label_name in dict_lable:
                                                     dict_lable[label_name] += 1
                                                 else:
-                                                    dict_lable[label_name] = 1                                            
-                                                task_list += (f'\n{text}\nНаправление: {label_name}\n{time_left}\n')
-                                                count_tasks += 1
-                                                time_left = 'Просрочен'
-                                        else:
-                                            time_left = 'Без дедлайна'
+                                                    dict_lable[label_name] = 1   
+                                            task_list += (f'\n{text}\nНаправление: {text_label_name}\n{time_left}\n')                                     
+                                        
+                                else:
+                                    time_left = 'Без дедлайна'
+
 
                 count_lable = 'Количество задач в каждом направлении:\n'
                 for i in dict_lable:
@@ -444,16 +468,16 @@ async def button_click(callback: types.CallbackQuery):
                             if int(task.get('column_id')) == int(column_id):
                                 name = task.get('title') 
                                 due = task.get('due_date')
-                                text = f"{name}"
                                 count_tasks += 1 
                                 text_label_name = ''
                                 if not due:  
 
-                                    time_left = 'Без дедлайна'
-
+                                  
                                     if not task.get('tags'):
-
+                                        label_name = 'без направленния' 
+                                        
                                         dict_lable['без направленния'] += 1
+                                        task_list += (f'\n{name}\nНаправление: {label_name}\n')
 
                                     else:
                                         
@@ -467,7 +491,7 @@ async def button_click(callback: types.CallbackQuery):
                                                 dict_lable[label_name] += 1
                                             else:
                                                 dict_lable[label_name] = 1           
-                                task_list += (f'\n{text}\nНаправление: {text_label_name}\n')   
+                                        task_list += (f'\n{name}\nНаправление: {text_label_name}\n')   
                                
                 count_lable = 'Количество задач в каждом направлении:\n'
                 for i in dict_lable:
@@ -478,7 +502,12 @@ async def button_click(callback: types.CallbackQuery):
                 else:
                     task_list += '\n' + count_lable + '\n'
 
-            await message.edit_text(task_list + '\n')
+            if len(task_list) > 4096:
+                for x in range(0, len(task_list), 4096):
+                    await message.answer(task_list[x:x+4096] + '\n')
+                    
+            else:
+                await message.answer(task_list + '\n')
 
 
         else:
@@ -519,42 +548,53 @@ async def button_click(callback: types.CallbackQuery):
 
                         
                         for task in name_desk.get('cards'):
+
                             if int(task.get('column_id')) == int(column_id):
-                                
-                                if not task.get('tags'):
-                                    dict_lable['без направленния'] += 1   
-                                else:             
-                                    for label in task.get('tags'):
-
-                                        name = task.get('title')
+                                name = task.get('title')
+                                due = task.get('due_date')
+                                text = f"{name}"
+                                                                    
+                                if due:
+                                    due_date = datetime.datetime.strptime(due, '%Y-%m-%dT%H:%M:%S.%fZ') + datetime.timedelta(hours=3)
+                                    now = datetime.datetime.now()
+                                    time_left = due_date - now
+                                    days = time_left.days
+                                    hours = (time_left.seconds / 3600)
+                                    minutes = ((time_left.seconds % 3600) // 60)
+                                    time_left = f'Дедлайн: {days} дней, {round(hours, 0)} часов, {minutes} минут.'
+                                    if days == 0 and (hours >= 0 or minutes >= 0):
+                                        if not task.get('tags'):
+                                            dict_lable['без направленния'] += 1   
+                                        else:             
+                                            for label in task.get('tags'):                                    
                                         
-                                        label_name = label.get('name')
-                                        due = task.get('due_date')
-                                        text = f"{name}"
-
-                                        if due:
-                                            due_date = datetime.datetime.strptime(due, '%Y-%m-%dT%H:%M:%S.%fZ') + datetime.timedelta(hours=3)
-                                            now = datetime.datetime.now()
-                                            time_left = due_date - now
-                                            days = time_left.days
-                                            hours = (time_left.seconds / 3600)
-                                            minutes = ((time_left.seconds % 3600) // 60)
-                                            time_left = f'Дедлайн: {days} дней, {round(hours, 0)} часов, {minutes} минут.'
-                                            if days == 0 and (hours >= 0 or minutes >= 0):
+                                                label_name = label.get('name')
                                                 if label_name in dict_lable:
                                                     dict_lable[label_name] += 1
                                                 else:
                                                     dict_lable[label_name] = 1
-                                                dict_tasks['Истекающие карточки'] += 1
-                                                
-                                            elif days < 0:
+                                        dict_tasks['Истекающие карточки'] += 1
+                                        
+                                    elif days < 0:
+                                        if not task.get('tags'):
+                                            dict_lable['без направленния'] += 1   
+                                        else:             
+                                            for label in task.get('tags'):                                    
+                                        
+                                                label_name = label.get('name')
                                                 if label_name in dict_lable:
                                                     dict_lable[label_name] += 1
                                                 else:
                                                     dict_lable[label_name] = 1
-                                                dict_tasks['Просроченные карточки'] += 1
+                                        dict_tasks['Просроченные карточки'] += 1
 
-                                        else:
+                                else:
+                                    if not task.get('tags'):
+                                        dict_lable['без направленния'] += 1   
+                                    else:             
+                                        for label in task.get('tags'):                                    
+                                    
+                                            label_name = label.get('name')
                                             if label_name in dict_lable:
                                                 dict_lable[label_name] += 1
                                             else:
@@ -565,6 +605,7 @@ async def button_click(callback: types.CallbackQuery):
                         for list_name in name_desk.get('columns'):
                             if list_name.get('title').lower() == 'backlog':
                                 column_id = list_name.get('id')
+                                
 
                         
                         for task in name_desk.get('cards'):
@@ -611,5 +652,6 @@ def register_handler_start(dp: Dispatcher):
     dp.register_message_handler(spaces_command, commands=['active_spaces'])
     dp.register_message_handler(change_boards_command, commands=['change_boards'])
     dp.register_message_handler(change_spaces_command, commands=['change_spaces'])
+    dp.register_message_handler(process_change_user_command, commands=["change_user"])
     dp.register_message_handler(kaiten_api_handler)
     dp.register_message_handler(button_click)

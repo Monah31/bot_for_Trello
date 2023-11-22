@@ -1,5 +1,5 @@
 import sqlite3
-from .tables import query_tables, query_users, query_spaces
+from .tables import query_tables, query_users, query_spaces, query_users_id
 
 
 class Database():
@@ -10,11 +10,13 @@ class Database():
         self.query_users = query_users
         self.query_tables = query_tables
         self.query_spaces = query_spaces
+        self.query_users_id = query_users_id
         self.conn = sqlite3.connect(db_name)  #Устанавливаем связь с бд
         self.cur = self.conn.cursor()
         self.execute_new(self.query_users)
         self.execute_new(self.query_tables)
         self.execute_new(self.query_spaces)
+        self.execute_new(self.query_users_id)
 
     def execute(self, query, params):
         '''Метод выполнения SQL-запросов'''
@@ -150,3 +152,30 @@ class Database():
                                  FROM '{table}' \
                                  WHERE TG_ID = ?",
                                 (TG_ID, )).fetchone()[0]) == 'token'
+        
+    
+   
+    def get_users_id(self, tg_id):
+        ''' Метод получения ID доски'''
+        self.execute(f"SELECT USER_ID \
+                     FROM users_id \
+                     WHERE TG_ID = ?",
+                    (tg_id, ))
+        return self.cur.fetchall()
+    
+        
+    def add_users_id(self, tg_id, user_id):
+        ''' Метод добавления доски'''
+        self.execute(f'INSERT \
+                     INTO users_id (TG_ID, USER_ID) \
+                     VALUES (?, ?)', 
+                    (tg_id, user_id, ))
+        
+        
+    def remove_users_id(self, tg_id, user_id):
+        ''' Метод удаление доски'''
+        self.execute(f'DELETE \
+                    FROM users_id \
+                    WHERE TG_ID = ? \
+                    AND USER_ID = ?', 
+                    (tg_id, user_id, ))
